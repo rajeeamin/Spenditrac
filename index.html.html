@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spending Tracker</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f4f5f7;
+    color: #1a1a1a;
+    padding: 16px;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 22px;
+    margin-bottom: 16px;
+  }
+  .card {
+    background: white;
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .total-label {
+    font-size: 13px;
+    color: #666;
+  }
+  .total-amount {
+    font-size: 32px;
+    font-weight: 700;
+    margin-top: 4px;
+  }
+  form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  label {
+    font-size: 13px;
+    color: #555;
+    margin-bottom: 2px;
+    display: block;
+  }
+  input, select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 16px;
+    background: #fafafa;
+  }
+  button {
+    background: #2563eb;
+    color: white;
+    border: none;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 4px;
+  }
+  button:active { background: #1d4ed8; }
+  .entry {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid #eee;
+  }
+  .entry:last-child { border-bottom: none; }
+  .entry-left { flex: 1; }
+  .entry-category {
+    font-size: 13px;
+    color: #666;
+  }
+  .entry-note {
+    font-size: 15px;
+    font-weight: 500;
+  }
+  .entry-date {
+    font-size: 12px;
+    color: #999;
+  }
+  .entry-amount {
+    font-size: 16px;
+    font-weight: 600;
+    margin-right: 10px;
+  }
+  .delete-btn {
+    background: none;
+    border: none;
+    color: #d33;
+    font-size: 18px;
+    padding: 4px 8px;
+    margin: 0;
+  }
+  .empty-state {
+    text-align: center;
+    color: #999;
+    padding: 24px 0;
+    font-size: 14px;
+  }
+  .section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #555;
+    margin-bottom: 8px;
+  }
+</style>
+</head>
+<body>
+
+  <h1>💰 My Spending Tracker</h1>
+
+  <div class="card">
+    <div class="total-label">This month's total</div>
+    <div class="total-amount" id="totalAmount">৳0</div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Add an expense</div>
+    <form id="expenseForm">
+      <div>
+        <label for="amount">Amount</label>
+        <input type="number" id="amount" placeholder="e.g. 500" step="0.01" required>
+      </div>
+      <div>
+        <label for="category">Category</label>
+        <select id="category">
+          <option>Food</option>
+          <option>Transport</option>
+          <option>Bills</option>
+          <option>Shopping</option>
+          <option>Health</option>
+          <option>Family</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div>
+        <label for="note">Note (optional)</label>
+        <input type="text" id="note" placeholder="e.g. Groceries">
+      </div>
+      <div>
+        <label for="date">Date</label>
+        <input type="date" id="date" required>
+      </div>
+      <button type="submit">Add Expense</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Recent expenses</div>
+    <div id="expenseList"></div>
+  </div>
+
+<script>
+  // ---- STATE ----
+  // This array holds all our expenses while the app is running.
+  // Each expense is an "object" with a few properties: amount, category, note, date.
+  let expenses = [];
+
+  // Grab references to the HTML elements we'll need to update
+  const form = document.getElementById('expenseForm');
+  const listEl = document.getElementById('expenseList');
+  const totalEl = document.getElementById('totalAmount');
+  const dateInput = document.getElementById('date');
+
+  // Default the date field to today
+  dateInput.value = new Date().toISOString().split('T')[0];
+
+  // ---- LOAD SAVED DATA WHEN THE APP OPENS ----
+  async function loadExpenses() {
+    try {
+      const result = await window.storage.get('expenses');
+      if (result && result.value) {
+        expenses = JSON.parse(result.value);
+      }
+    } catch (err) {
+      // No saved data yet — that's fine, we just start with an empty list
+      expenses = [];
+    }
+    render();
+  }
+
+  // ---- SAVE DATA WHENEVER IT CHANGES ----
+  async function saveExpenses() {
+    try {
+      await window.storage.set('expenses', JSON.stringify(expenses));
+    } catch (err) {
+      console.error('Could not save expenses:', err);
+    }
+  }
+
+  // ---- ADD A NEW EXPENSE ----
+  form.addEventListener('submit', function(e) {
+    e.preventDefault(); // stops the page from reloading (default form behavior)
+
+    const newExpense = {
+      id: Date.now(), // a quick unique ID based on the current timestamp
+      amount: parseFloat(document.getElementById('amount').value),
+      category: document.getElementById('category').value,
+      note: document.getElementById('note').value || document.getElementById('category').value,
+      date: document.getElementById('date').value
+    };
+
+    expenses.unshift(newExpense); // add to the front of the list
+    saveExpenses();
+    render();
+    form.reset();
+    dateInput.value = new Date().toISOString().split('T')[0];
+    document.getElementById('amount').focus();
+  });
+
+  // ---- DELETE AN EXPENSE ----
+  function deleteExpense(id) {
+    expenses = expenses.filter(exp => exp.id !== id);
+    saveExpenses();
+    render();
+  }
+
+  // ---- DRAW THE LIST + TOTAL ON SCREEN ----
+  function render() {
+    // Calculate this month's total
+    const now = new Date();
+    const thisMonthTotal = expenses
+      .filter(exp => {
+        const d = new Date(exp.date);
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      })
+      .reduce((sum, exp) => sum + exp.amount, 0);
+
+    totalEl.textContent = '৳' + thisMonthTotal.toLocaleString(undefined, {minimumFractionDigits: 0});
+
+    // Draw the list
+    if (expenses.length === 0) {
+      listEl.innerHTML = '<div class="empty-state">No expenses yet. Add your first one above.</div>';
+      return;
+    }
+
+    listEl.innerHTML = expenses.map(exp => `
+      <div class="entry">
+        <div class="entry-left">
+          <div class="entry-note">${exp.note}</div>
+          <div class="entry-category">${exp.category} · ${exp.date}</div>
+        </div>
+        <div class="entry-amount">৳${exp.amount.toLocaleString()}</div>
+        <button class="delete-btn" onclick="deleteExpense(${exp.id})">✕</button>
+      </div>
+    `).join('');
+  }
+
+  // Start the app
+  loadExpenses();
+</script>
+
+</body>
+</html>
